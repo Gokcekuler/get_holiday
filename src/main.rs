@@ -4,11 +4,10 @@ use reqwest;
 use chrono::{NaiveDate, Local, Datelike};
 use std::fs;
 use serde_json;
-use std::cmp;
 
 #[derive(Parser, Debug)]
 struct Args { 
-    // Country Code
+    /// Country Code
     country: String,
 }
 
@@ -42,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>  {
     let country_code = args.country.to_uppercase();
     let valid_country_codes = read_country_codes().expect("Failed to read country codes file");
 
+
     if !valid_country_codes.contains(&country_code) {
         eprintln!(
             "Error: '{}' is not a valid country code. Valid country codes are: {:?}",
@@ -57,9 +57,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>  {
 
     if let Some(cached_data) = check_cache(&country_code, today)? {
         println!("Using cached data for {} (Date: {}).", country_code, today);
-        list_holidays(&cached_data.holidays, today, &country_code).await?;
+
+        print_holidays(&cached_data.holidays, today);
                 return Ok(()); // Cache was used
-    }
+            }
 
     let url = format!("https://date.nager.at/api/v3/publicholidays/{}/{}", current_year, country_code); 
 
@@ -69,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>  {
             if response.status().is_success() {
                 let holidays: Vec<Holiday> = response.json().await?;
                 write_cache(&country_code, today, &holidays)?;
-                list_holidays(&holidays, today, &country_code).await?;
+                print_holidays(&holidays, today);
             } else {
                 handle_http_error(response.status());
             }
@@ -85,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>  {
             std::process::exit(1);
         }
     }
-
+    
     Ok(())
 }
 
@@ -117,57 +118,34 @@ fn check_cache(country_code: &str, today: NaiveDate) -> Result<Option<CachedData
     Ok(None) 
 }
 
-async fn list_holidays(holidays: &[Holiday], today: NaiveDate, country_code: &str,) -> Result<(), Box<dyn std::error::Error>> {
+fn print_holidays(holidays: &[Holiday], today: NaiveDate) {
     let filtered_holidays: Vec<&Holiday> = holidays
         .iter()
         .filter(|holiday| {
             NaiveDate::parse_from_str(&holiday.date, "%Y-%m-%d")
-                .map(|date| date > today)
+                .map(|date| date > today) 
                 .unwrap_or(false)
         })
-        .take(5)
+        .take(5) // first 5 holiday
         .collect();
 
-    for holiday in &filtered_holidays {
-        print_holiday(holiday); 
-    }
-
-    let holidays_printed = filtered_holidays.len();
-    let remaining_holidays = 5 - holidays_printed;
-    
-    if remaining_holidays > 0 {
-        let next_year = today.year() + 1;
-        let url = format!(
-            "https://date.nager.at/api/v3/publicholidays/{}/{}",
-            next_year, country_code
-        );
-        let response = reqwest::get(&url).await?;
-
-        if response.status().is_success() {
-            let additional_holidays: Vec<Holiday> = response.json().await?;
-            let additional_holidays = additional_holidays
-                .iter()
-                .take(cmp::min(remaining_holidays, additional_holidays.len()))
-                .cloned()
-                .collect::<Vec<_>>();
-            write_cache(
-                country_code, 
-                NaiveDate::from_ymd_opt(next_year, 1, 1).expect("Invalid date"), 
-                &additional_holidays
-            )?;
-
-            for holiday in &additional_holidays {
-                print_holiday(holiday);
+    for holiday in filtered_holidays {
+        println!(
+            "Date: {}, Name: {}, Counties: {}, Types: {}",
+            holiday.date,
+            holiday.name,
+            match &holiday.counties {
+                Some(counties) => counties.join(", "),
+                None => "National".to_string(),
+            },
+            if holiday.types.len() == 1 {
+                holiday.types[0].clone()
+            } else {
+                holiday.types.join(", ")
             }
-
-        } else {
-            handle_http_error(response.status());
-        }
+        );
     }
-
-    Ok(())
 }
-
 
 fn write_cache(country_code: &str, today: NaiveDate, holidays: &[Holiday],) -> Result<(), Box<dyn std::error::Error>> {
     // read current cache
@@ -187,6 +165,7 @@ fn write_cache(country_code: &str, today: NaiveDate, holidays: &[Holiday],) -> R
     if full_cache.data.iter().any(|data| {
         data.country_code == country_code && data.date == today.to_string()
     }) {
+        println!("Cache already contains data for {} on {}.", country_code, today);
         return Ok(());
     }
 
@@ -206,6 +185,7 @@ fn write_cache(country_code: &str, today: NaiveDate, holidays: &[Holiday],) -> R
             handle_file_error(&err, CACHE_FILE);
             err
         })?;
+    println!("Cache updated successfully for {}.", country_code);
 
     Ok(())
 }
@@ -278,22 +258,5 @@ fn handle_file_error(err: &std::io::Error, file_name: &str) {
         }
     }
     std::process::exit(1);
-}
-
-fn print_holiday(holiday: &Holiday) {
-    println!(
-        "Date: {}, Name: {}, Counties: {}, Types: {}",
-        holiday.date,
-        holiday.name,
-        match &holiday.counties {
-            Some(counties) => counties.join(", "),
-            None => "National".to_string(),
-        },
-        if holiday.types.len() == 1 {
-            holiday.types[0].clone()
-        } else {
-            holiday.types.join(", ")
-        }
-    );
 }
 
