@@ -7,7 +7,7 @@ use serde_json;
 
 #[derive(Parser, Debug)]
 struct Args { 
-    /// Country Code
+    // Country Code
     country: String,
 }
 
