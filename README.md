@@ -16,3 +16,5 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 After downloading the code to your local first you can run command ``cargo build`` and after you can run command
 ``cargo run -- "country cod"``. For example, you can run it by giving the command ``cargo run -- DE`` for Germany and ``cargo run -- FR`` for France.
 
+If you ran the project in one of the main or NextHolidays branches, it is recommended that you delete the ``holidays_cache.json`` file before running it in the other branch. Because these two branches are actually designed to show how it will work when two different logics are applied in the project.
+
